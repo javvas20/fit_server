@@ -9,6 +9,7 @@ on:
 jobs:
   convert-and-upload:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,9 +22,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install fitparse pydrive
-      
+
       - name: Save Google Drive Credentials
-      run: echo '${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}' > client_secrets.json
+        run: echo '${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}' > client_secrets.json
 
       - name: Run Conversion Script
         run: python convert_and_upload.py
