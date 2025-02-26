@@ -6,13 +6,16 @@ import fitparse
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 
-# ✅ Function to log messages both to console and a file
+# ✅ Ensure log file is created at the start
+with open("log.txt", "w") as log_file:
+    log_file.write("✅ Script started successfully!\n")
+
 def log_message(message):
     print(message)
     with open("log.txt", "a") as log_file:
         log_file.write(message + "\n")
 
-log_message("✅ Script started successfully!")
+log_message("✅ Script is now running...")
 
 # Function to parse .FIT file
 def parse_fit_file(file_path):
@@ -93,4 +96,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
