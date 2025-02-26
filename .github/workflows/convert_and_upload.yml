@@ -14,6 +14,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug - List Files Before Running Script
+        run: |
+          echo "📂 Listing all files in repository:"
+          ls -R && pwd
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -25,6 +30,9 @@ jobs:
 
       - name: Save Google Drive Credentials
         run: echo '${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}' > client_secrets.json
+
+      - name: Set Execute Permission for Script
+        run: chmod +x convert_and_upload.py
 
       - name: Run Conversion Script
         run: |
