@@ -1,0 +1,29 @@
+name: Convert FIT to JSON & Upload to Google Drive
+
+on:
+  push:
+    paths:
+      - 'fit_files/*.fit'  # Runs when a new .fit file is uploaded
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  convert-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          pip install fitparse pydrive
+      
+      - name: Decode Google Drive Credentials
+        run: echo "${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}" > credentials.json
+
+      - name: Run Conversion Script
+        run: python convert_and_upload.py
