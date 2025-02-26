@@ -1,128 +1,138 @@
 import os
 import json
 import time
-import signal
-import datetime
+import requests
 import fitparse
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+import datetime
+import jwt  # PyJWT
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
-### ✅ 1️⃣ Print Start Message ###
-print("✅ Script started: Running convert_and_upload.py")
+# 1) Convert all .fit files in 'fit_files/' to .json
+def convert_fit_files():
+    json_files = []
+    for fname in os.listdir('fit_files'):
+        if fname.endswith('.fit'):
+            fit_path = os.path.join('fit_files', fname)
+            json_path = fit_path.replace('.fit', '.json')
+            print(f"Converting {fit_path} → {json_path}")
 
-### ✅ 2️⃣ Check if Google Drive Credentials Exist ###
-if not os.path.exists("client_secrets.json"):
-    print("❌ ERROR: `client_secrets.json` is missing! Exiting workflow.")
-    exit(1)
-else:
-    print("✅ Google Drive credentials file found.")
+            # Parse the .fit file
+            data = []
+            fitfile = fitparse.FitFile(fit_path)
+            for record in fitfile.get_messages():
+                record_data = {}
+                for field in record:
+                    val = field.value
+                    # If it's a datetime.time, convert to string
+                    if isinstance(val, datetime.time):
+                        val = val.isoformat()
+                    record_data[field.name] = val
+                data.append(record_data)
 
-### ✅ 3️⃣ Timeout Handler for FIT File Parsing ###
-def timeout_handler(signum, frame):
-    raise TimeoutError("❌ ERROR: FIT file processing took too long! Exiting.")
+            # Write JSON next to .fit
+            with open(json_path, 'w') as jf:
+                json.dump(data, jf, indent=4)
+            json_files.append(json_path)
+    return json_files
 
-signal.signal(signal.SIGALRM, timeout_handler)
+# 2) Get an OAuth access token using a Service Account (JWT)
+def get_access_token(service_account_json):
+    # Parse the service account JSON
+    sa_info = json.loads(service_account_json)
+    email = sa_info['client_email']
+    private_key = sa_info['private_key']
+    # Google OAuth token URL for service accounts
+    auth_url = "https://oauth2.googleapis.com/token"
 
-### ✅ 4️⃣ Google Drive Authentication with Timeout ###
-def authenticate_drive():
-    print("🔹 [STEP] Authenticating with Google Drive...")
-    gauth = GoogleAuth()
-    gauth.LoadClientConfigFile("client_secrets.json")
+    # Construct a JWT for Drive scope
+    now = int(time.time())
+    # Expire in 1 hour
+    expiry = now + 3600
 
-    try:
-        start_time = time.time()
-        gauth.LocalWebserverAuth()
-        elapsed_time = time.time() - start_time
+    payload = {
+        "iss": email,
+        "scope": "https://www.googleapis.com/auth/drive.file",
+        "aud": auth_url,
+        "exp": expiry,
+        "iat": now
+    }
 
-        if elapsed_time > 30:  # Google authentication timeout (30 sec)
-            raise TimeoutError("❌ ERROR: Google Drive authentication took too long!")
+    # Sign the JWT with the private key
+    # Convert private_key (str) → cryptography object
+    key_bytes = private_key.encode('utf-8')
+    private_key_obj = serialization.load_pem_private_key(key_bytes, password=None, backend=default_backend())
 
-        print("✅ [SUCCESS] Google Drive authentication successful!")
-    except Exception as e:
-        print(f"❌ ERROR: Google Drive authentication failed: {e}")
-        exit(1)
+    jwt_token = jwt.encode(payload, private_key_obj, algorithm="RS256")
 
-    drive = GoogleDrive(gauth)
-    return drive
+    # Exchange JWT for access token
+    resp = requests.post(auth_url, data={
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": jwt_token
+    })
 
-### ✅ 5️⃣ FIT File Parsing with Timeout ###
-def parse_fit_file(file_path):
-    print(f"🔹 [STEP] Parsing FIT file: {file_path}")
+    if resp.status_code != 200:
+        raise Exception(f"Failed to get access token: {resp.text}")
 
-    # Set timeout (30 sec max)
-    signal.alarm(30)
+    token_info = resp.json()
+    access_token = token_info["access_token"]
+    return access_token
 
-    try:
-        fitfile = fitparse.FitFile(file_path)
-        data = []
-        activity_type = "Unknown"
-        activity_date = "UnknownDate"
+# 3) Upload .json files to Google Drive using raw HTTP
+def upload_to_drive(access_token, folder_id, json_file):
+    # We'll do a multipart upload:
+    # 1. Metadata (JSON)
+    # 2. File content
+    filename = os.path.basename(json_file)
+    metadata = {
+        "name": filename,
+        "parents": [folder_id]  # Put in the shared folder
+    }
 
-        for record in fitfile.get_messages():
-            record_data = {}
-            for field in record:
-                value = field.value
-                if field.name == "sport":
-                    activity_type = value
-                if field.name == "timestamp":
-                    activity_date = value.strftime("%Y-%m-%d")
+    files = {
+        'metadata': ('metadata.json', json.dumps(metadata), 'application/json'),
+        'file': (filename, open(json_file, 'rb'), 'application/json')
+    }
 
-                if isinstance(value, datetime.time):
-                    value = value.isoformat()
-                record_data[field.name] = value
-            data.append(record_data)
+    resp = requests.post(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+        headers={"Authorization": f"Bearer {access_token}"},
+        files=files
+    )
+    if resp.status_code not in [200, 201]:
+        raise Exception(f"Drive upload failed: {resp.text}")
+    print(f"Uploaded {filename} to Google Drive. File ID: {resp.json().get('id')}")
 
-        signal.alarm(0)  # Cancel timeout after success
-        print(f"✅ [SUCCESS] FIT file parsed successfully: {file_path}")
-
-        return data, activity_type, activity_date
-    except TimeoutError:
-        print("❌ ERROR: FIT file parsing took too long! Exiting.")
-        exit(1)
-    except Exception as e:
-        print(f"❌ ERROR: Failed to parse FIT file: {e}")
-        exit(1)
-
-### ✅ 6️⃣ Upload JSON to Google Drive ###
-def upload_to_drive(file_name, json_data):
-    print("🔹 [STEP] Connecting to Google Drive for upload...")
-    drive = authenticate_drive()
-
-    json_filename = f"{file_name.replace('.fit', '')}.json"
-    json_path = os.path.join("fit_files", json_filename)
-
-    print(f"🔹 [STEP] Saving JSON file locally: {json_path}")
-    with open(json_path, "w") as f:
-        json.dump(json_data, f, indent=4)
-
-    print(f"🔹 [STEP] Uploading {json_filename} to Google Drive...")
-    try:
-        file_drive = drive.CreateFile({'title': json_filename})
-        file_drive.SetContentFile(json_path)
-        file_drive.Upload()
-        print(f"✅ [SUCCESS] Successfully uploaded {json_filename} to Google Drive!")
-    except Exception as e:
-        print(f"❌ ERROR: Failed to upload {json_filename}: {e}")
-        exit(1)
-
-### ✅ 7️⃣ Main Function ###
+# 4) Main Script
 def main():
-    print("✅ [START] Script execution begins.")
+    print("Starting FIT → JSON conversion...")
+    json_files = convert_fit_files()
+    if not json_files:
+        print("No .fit files found. Exiting.")
+        return
 
-    fit_folder = "fit_files"
-    fit_files = [f for f in os.listdir(fit_folder) if f.endswith(".fit")]
+    # Read service account from env (populated by GitHub secret)
+    service_account_json = os.getenv("GDRIVE_SERVICE_ACCOUNT")
+    if not service_account_json:
+        print("No GDRIVE_SERVICE_ACCOUNT env var found. Skipping Drive upload.")
+        return
 
-    if not fit_files:
-        print("❌ ERROR: No FIT files found! Exiting.")
-        exit(1)
+    # Folder ID from env (or fallback if you want)
+    folder_id = os.getenv("GDRIVE_FOLDER_ID", "")
+    if not folder_id:
+        print("No GDRIVE_FOLDER_ID provided. Skipping Drive upload.")
+        return
 
-    for fit_file in fit_files:
-        file_path = os.path.join(fit_folder, fit_file)
-        json_data, activity_type, activity_date = parse_fit_file(file_path)
-        upload_to_drive(fit_file, json_data)
+    print("Getting access token for Google Drive service account...")
+    access_token = get_access_token(service_account_json)
 
-    print("✅ [DONE] Script execution finished successfully.")
+    print("Uploading JSON files to Google Drive...")
+    for jf in json_files:
+        upload_to_drive(access_token, folder_id, jf)
+
+    print("All done!")
 
 if __name__ == "__main__":
     main()
+
 
