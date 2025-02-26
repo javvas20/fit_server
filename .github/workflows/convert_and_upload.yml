@@ -1,40 +1,40 @@
-name: Convert FIT to JSON & Upload to Google Drive
+name: Convert FIT and Upload to Drive
 
 on:
   push:
     paths:
-      - 'fit_files/*.fit'  # Runs only when a new .fit file is uploaded
-  workflow_dispatch:  # Allows manual trigger
+      - 'fit_files/*.fit'
+  workflow_dispatch:
 
 jobs:
   convert-and-upload:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Check out repo
+      uses: actions/checkout@v4
 
-      - name: Debug - List Files Before Running Script
-        run: |
-          echo "📂 Listing all files in repository:"
-          ls -R && pwd
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.9"
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
 
-      - name: Install dependencies
-        run: |
-          pip install fitparse pydrive
+    - name: Inject secrets into env
+      # Pull your Google secrets from GitHub and set them as env variables
+      run: echo "Setting GDRIVE vars"
+      env:
+        GDRIVE_SERVICE_ACCOUNT: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }} 
+        GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
 
-      - name: Save Google Drive Credentials
-        run: echo '${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}' > client_secrets.json
-
-      - name: Set Execute Permission for Script
-        run: chmod +x convert_and_upload.py
-
-      - name: Run Conversion Script
-        run: |
-          python convert_and_upload.py || echo "❌ Script failed. Check logs."
-          cat log.txt || echo "⚠️ No log file found."
+    - name: Convert and Upload
+      # The environment variables above won't persist automatically across steps
+      # So you can either do the same approach in-line or combine steps.
+      run: |
+        echo "Running convert_and_upload.py..."
+        python convert_and_upload.py
+      env:
+        GDRIVE_SERVICE_ACCOUNT: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
+        GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
