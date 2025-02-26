@@ -24,7 +24,7 @@ jobs:
           pip install fitparse pydrive
 
       - name: Save Google Drive Credentials
-        run: echo '${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}' | base64 --decode > client_secrets.json
+        run: echo '${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}' > client_secrets.json
 
       - name: Run Conversion Script
         run: python convert_and_upload.py
