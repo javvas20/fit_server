@@ -24,7 +24,7 @@ def parse_fit_file(file_path):
 # Function to authenticate with Google Drive
 def authenticate_drive():
     gauth = GoogleAuth()
-    gauth.LoadCredentialsFile("credentials.json")
+    gauth.LoadClientConfigFile("client_secrets.json")
 
     if gauth.credentials is None:
         gauth.LocalWebserverAuth()
