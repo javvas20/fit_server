@@ -7,22 +7,25 @@ import fitparse
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 
-### ✅ 1️⃣ Check if Google Drive Credentials Exist ###
+### ✅ 1️⃣ Print Start Message ###
+print("✅ Script started: Running convert_and_upload.py")
+
+### ✅ 2️⃣ Check if Google Drive Credentials Exist ###
 if not os.path.exists("client_secrets.json"):
     print("❌ ERROR: `client_secrets.json` is missing! Exiting workflow.")
     exit(1)
 else:
     print("✅ Google Drive credentials file found.")
 
-### ✅ 2️⃣ Timeout Handler for FIT File Parsing ###
+### ✅ 3️⃣ Timeout Handler for FIT File Parsing ###
 def timeout_handler(signum, frame):
     raise TimeoutError("❌ ERROR: FIT file processing took too long! Exiting.")
 
 signal.signal(signal.SIGALRM, timeout_handler)
 
-### ✅ 3️⃣ Google Drive Authentication with Timeout ###
+### ✅ 4️⃣ Google Drive Authentication with Timeout ###
 def authenticate_drive():
-    print("🔹 Starting Google Drive Authentication...")
+    print("🔹 [STEP] Authenticating with Google Drive...")
     gauth = GoogleAuth()
     gauth.LoadClientConfigFile("client_secrets.json")
 
@@ -34,7 +37,7 @@ def authenticate_drive():
         if elapsed_time > 30:  # Google authentication timeout (30 sec)
             raise TimeoutError("❌ ERROR: Google Drive authentication took too long!")
 
-        print("✅ Google Drive authentication successful!")
+        print("✅ [SUCCESS] Google Drive authentication successful!")
     except Exception as e:
         print(f"❌ ERROR: Google Drive authentication failed: {e}")
         exit(1)
@@ -42,9 +45,9 @@ def authenticate_drive():
     drive = GoogleDrive(gauth)
     return drive
 
-### ✅ 4️⃣ FIT File Parsing with Timeout ###
+### ✅ 5️⃣ FIT File Parsing with Timeout ###
 def parse_fit_file(file_path):
-    print(f"🔹 Parsing FIT file: {file_path}")
+    print(f"🔹 [STEP] Parsing FIT file: {file_path}")
 
     # Set timeout (30 sec max)
     signal.alarm(30)
@@ -70,7 +73,7 @@ def parse_fit_file(file_path):
             data.append(record_data)
 
         signal.alarm(0)  # Cancel timeout after success
-        print(f"✅ FIT file parsed successfully: {file_path}")
+        print(f"✅ [SUCCESS] FIT file parsed successfully: {file_path}")
 
         return data, activity_type, activity_date
     except TimeoutError:
@@ -80,31 +83,31 @@ def parse_fit_file(file_path):
         print(f"❌ ERROR: Failed to parse FIT file: {e}")
         exit(1)
 
-### ✅ 5️⃣ Upload JSON to Google Drive ###
+### ✅ 6️⃣ Upload JSON to Google Drive ###
 def upload_to_drive(file_name, json_data):
-    print("🔹 Connecting to Google Drive for upload...")
+    print("🔹 [STEP] Connecting to Google Drive for upload...")
     drive = authenticate_drive()
 
     json_filename = f"{file_name.replace('.fit', '')}.json"
     json_path = os.path.join("fit_files", json_filename)
 
-    print(f"🔹 Saving JSON file locally: {json_path}")
+    print(f"🔹 [STEP] Saving JSON file locally: {json_path}")
     with open(json_path, "w") as f:
         json.dump(json_data, f, indent=4)
 
-    print(f"🔹 Uploading {json_filename} to Google Drive...")
+    print(f"🔹 [STEP] Uploading {json_filename} to Google Drive...")
     try:
         file_drive = drive.CreateFile({'title': json_filename})
         file_drive.SetContentFile(json_path)
         file_drive.Upload()
-        print(f"✅ Successfully uploaded {json_filename} to Google Drive!")
+        print(f"✅ [SUCCESS] Successfully uploaded {json_filename} to Google Drive!")
     except Exception as e:
         print(f"❌ ERROR: Failed to upload {json_filename}: {e}")
         exit(1)
 
-### ✅ 6️⃣ Main Function ###
+### ✅ 7️⃣ Main Function ###
 def main():
-    print("✅ Script started successfully!")
+    print("✅ [START] Script execution begins.")
 
     fit_folder = "fit_files"
     fit_files = [f for f in os.listdir(fit_folder) if f.endswith(".fit")]
@@ -118,5 +121,8 @@ def main():
         json_data, activity_type, activity_date = parse_fit_file(file_path)
         upload_to_drive(fit_file, json_data)
 
+    print("✅ [DONE] Script execution finished successfully.")
+
 if __name__ == "__main__":
     main()
+
