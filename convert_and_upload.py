@@ -5,10 +5,14 @@ import fitparse
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 
+# ✅ Confirm script execution
+print("✅ Script started successfully!")
+
 # Function to parse .FIT file
 def parse_fit_file(file_path):
     print(f"🔹 Parsing FIT file: {file_path}")
     fitfile = fitparse.FitFile(file_path)
+
     data = []
     activity_type = "Unknown"
     activity_date = "UnknownDate"
@@ -21,16 +25,13 @@ def parse_fit_file(file_path):
                 activity_type = value
             if field.name == "timestamp":
                 activity_date = value.strftime("%Y-%m-%d")
-
-            if isinstance(value, datetime.time):
-                value = value.isoformat()
             record_data[field.name] = value
         data.append(record_data)
 
     print(f"✅ FIT file parsed successfully: {file_path}")
     return data, activity_type, activity_date
 
-# Authenticate with Google Drive
+# Function to authenticate with Google Drive
 def authenticate_drive():
     print("🔹 Authenticating with Google Drive...")
     gauth = GoogleAuth()
@@ -46,8 +47,9 @@ def authenticate_drive():
     drive = GoogleDrive(gauth)
     return drive
 
-# Upload JSON to Google Drive
+# Function to upload JSON to Google Drive
 def upload_to_drive(file_name, json_data):
+    print("🔹 Connecting to Google Drive for upload...")
     drive = authenticate_drive()
 
     json_filename = f"{file_name.replace('.fit', '')}.json"
@@ -68,12 +70,20 @@ def upload_to_drive(file_name, json_data):
 
 # Convert & Upload
 def main():
+    print("🔹 Checking for .FIT files in 'fit_files' folder...")
     fit_folder = "fit_files"
-    for fit_file in os.listdir(fit_folder):
-        if fit_file.endswith(".fit"):
-            file_path = os.path.join(fit_folder, fit_file)
-            json_data, activity_type, activity_date = parse_fit_file(file_path)
-            upload_to_drive(fit_file, json_data)
+    fit_files = [f for f in os.listdir(fit_folder) if f.endswith(".fit")]
+
+    if not fit_files:
+        print("⚠️ No FIT files found. Exiting script.")
+        exit(0)
+
+    for fit_file in fit_files:
+        file_path = os.path.join(fit_folder, fit_file)
+        print(f"🔹 Processing file: {fit_file}")
+        json_data, activity_type, activity_date = parse_fit_file(file_path)
+        upload_to_drive(fit_file, json_data)
 
 if __name__ == "__main__":
     main()
+
