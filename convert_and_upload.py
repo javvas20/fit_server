@@ -11,8 +11,9 @@ from cryptography.hazmat.backends import default_backend
 def parse_fit_files():
     """
     1) Finds all .fit files in 'fit_files' folder.
-    2) Converts them to .json (fixing date/time issues).
-    3) Returns a list of new .json file paths.
+    2) Extracts **every** available metric, including advanced running dynamics.
+    3) Converts to .json, ensuring datetime fields are serialized properly.
+    4) Returns a list of .json file paths.
     """
     fit_folder = "fit_files"
     json_files = []
@@ -26,7 +27,7 @@ def parse_fit_files():
             fit_path = os.path.join(fit_folder, file_name)
             json_path = fit_path.replace(".fit", ".json")
 
-            print(f"Converting: {fit_path} → {json_path}")
+            print(f"🔹 Converting: {fit_path} → {json_path}")
 
             # Parse the .fit file
             fitfile = fitparse.FitFile(fit_path)
@@ -36,13 +37,19 @@ def parse_fit_files():
                 record_data = {}
                 for field in record:
                     value = field.value
-                    # FIX: Convert ALL date/time/datetime objects to string
+
+                    # Convert ALL date/time/datetime objects to ISO strings
                     if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
                         value = value.isoformat()
-                    record_data[field.name] = value
-                data.append(record_data)
 
-            # Save to JSON
+                    # Store field data
+                    record_data[field.name] = value
+                
+                # Only store if there's meaningful data
+                if record_data:
+                    data.append(record_data)
+
+            # Write to JSON
             with open(json_path, "w") as jf:
                 json.dump(data, jf, indent=4)
 
@@ -141,17 +148,14 @@ def main():
     service_account_json = os.getenv("GDRIVE_SERVICE_ACCOUNT", "")
     folder_id = os.getenv("GDRIVE_FOLDER_ID", "")
 
-    if not service_account_json:
-        print("No 'GDRIVE_SERVICE_ACCOUNT' found in env. Skipping Drive upload.")
-        return
-    if not folder_id:
-        print("No 'GDRIVE_FOLDER_ID' found in env. Skipping Drive upload.")
+    if not service_account_json or not folder_id:
+        print("Skipping Google Drive upload because secrets are missing.")
         return
 
     # 3) Get an OAuth access token
     access_token = get_access_token(service_account_json)
 
-    # 4) Upload each .json file to Google Drive
+    # 4) Upload each .json file to Drive
     for jf in json_files:
         upload_to_drive(access_token, folder_id, jf)
 
@@ -159,4 +163,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
